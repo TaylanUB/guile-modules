@@ -1,12 +1,12 @@
 ;;; Prologue
 ;;
-;; min ∈ Integer
-;; max ∈ Integer
-;; length ∈ Natural
+;; min ∈ ℤ
+;; max ∈ ℤ
+;; length ∈ ℕ
 ;;
-;; States = { s | s ∈ { n | min ≤ n ≤ max }^length }
+;; States = { n | min ≤ n ≤ max }^length
 ;;
-;; Operations = { f: S → States | S ⊂ States ∧ f(s) = s + t }
+;; Operations = { f : S → States, f : s ↦ s + t | S ⊂ States, t ∈ ℤ^length }
 ;;
 ;;
 ;; Goal: Implement an algorithm taking min, max, length, a starting state, a
