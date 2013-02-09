@@ -1,3 +1,9 @@
+;;; Structured access to bytevector contents.  We try to imitate C's numeric
+;;; types, arrays, structs, and unions here.  You use a "descriptor" together
+;;; with "accessors" to access parts of a bytevector whose contents conform to
+;;; what is described in your descriptor.  Like you had a void* in C and casted
+;;; some array/struct/union on it, then accessed members.
+
 (define-module (taylan bytestructures)
   #:export (bytestructure-descriptor?
             bytestructure-access
