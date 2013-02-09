@@ -6,10 +6,10 @@
 ;;; Follow solution steps, check for wrong assumption at each step, try other
 ;;; real-state if assumption was wrong.
 
-(define-module (taylan godwars-puzzle-solver)
+(define-module (taylan godwars puzzle-solver)
   #:export (find-solutions-for-visible-state))
 
-(use-modules (taylan godwars-puzzle-internal-solver))
+(use-modules (taylan godwars puzzle-internal-solver))
 
 (define low-values '(-3 -2 -1))
 (define high-values '(1 2 3))

@@ -22,7 +22,8 @@
             union-descriptor-size))
 
 (use-modules (srfi srfi-1)
-             (srfi srfi-9))
+             (srfi srfi-9)
+             (rnrs bytevector))
 
 (define-syntax assert
   (syntax-rules ()
@@ -30,28 +31,35 @@
      (unless expression
        (error "Assertion not met." 'expression)))))
 
-(define (numeric-type? obj)
-  (memq obj '(u8 s8 u16 s16 u32 s32 u64 s64 u128 s128 f32 f64 c64 c128
-                 u8le s8le u16le s16le u32le s32le u64le s64le u128le s128le
-                 f32le f64le c64le c128le
-                 u8be s8be u16be s16be u32be s32be u64be s64be u128be s128be
-                 f32be f64be c64be c128be
-                 )))
+;;; Numeric types
+
+(define-record-type :numeric-type
+  (numeric-type* signed? size set byte-order)
+  numeric-type?
+  (signed? numeric-type-signed?)
+  (size numeric-type-size)
+  (set numeric-type-set)
+  (byte-order numeric-type-byte-order))
+
+(define (numeric-type signed? size set . maybe-byte-order)
+  (assert (boolean? signed?))
+  (assert (and (integer? size) (< 0 size)))
+  (assert (memq set '(integer float complex)))
+  (assert (or (null? maybe-byte-order)
+              (and (memq (car maybe-byte-order) (list (endianness little)
+                                                      (endianness big)))
+                   (null? (cdr maybe-byte-order)))))
+  (assert (if (= size 1) (null? maybe-byte-order) #t))
+  (let ((byte-order (if (null? maybe-byte-order)
+                        (native-endianness)
+                        (car maybe-byte-order))))
+    (numeric-type* signed? size set byte-order)))
 
 (define (numeric-type-access bytevector type offset)
   ;; TODO
   (bytevector-u8-ref bytevector offset))
 
-(define (numeric-type-size type)
-  ;; TODO
-  1)
-
-(define (bytestructure-descriptor? obj)
-  (any (lambda (pred) (pred obj))
-       (list numeric-type?
-             vector-descriptor?
-             structure-descriptor?
-             union-descriptor?)))
+;;; Vector descriptors
 
 (define-record-type :vector-descriptor
   (vector-descriptor* type length size)
@@ -65,6 +73,22 @@
   (assert (and (integer? length) (<= 0 length)))
   (vector-descriptor*
    type length (* length (bytestructure-descriptor-size type))))
+
+;;; Field descriptors
+
+(define (field? obj)
+  (and (list? obj)
+       (= (length obj 2))
+       (symbol? (car obj))
+       (bytestructure-descriptor? (cadr obj))))
+
+(define (field-name field)
+  (car field))
+
+(define (field-type field)
+  (cadr field))
+
+;;; Structure descriptors
 
 (define-record-type :structure-descriptor
   (structure-descriptor* fields size)
@@ -81,6 +105,8 @@
                            (field-type field)))
                         fields))))
 
+;;; Union descriptors
+
 (define-record-type :union-descriptor
   (union-descriptor* fields size)
   union-descriptor?
@@ -96,19 +122,14 @@
                              (field-type field)))
                           fields))))
 
-(define (field? obj)
-  (and (list? obj)
-       (= (length obj 2))
-       (symbol? (car obj))
-       (bytestructure-descriptor? (cadr obj))))
+;;; Generalization
 
-(define (field-name field)
-  (car field))
-
-(define (field-type field)
-  (cadr field))
-
-;;; Accessing
+(define (bytestructure-descriptor? obj)
+  (any (lambda (pred) (pred obj))
+       (list numeric-type?
+             vector-descriptor?
+             structure-descriptor?
+             union-descriptor?)))
 
 (define (bytestructure-descriptor-size type)
   (apply (cond

@@ -29,10 +29,10 @@
 ;; The length value is not really used by the program. It would only really be
 ;; useful for assertions.
 
-(define-module (taylan godwars-puzzle-internal-solver)
+(define-module (taylan godwars puzzle-internal-solver)
   #:export (find-solutions))
 
-(use-modules (taylan godwars-puzzle-utils)
+(use-modules (taylan godwars puzzle-utils)
              (srfi srfi-9))
 
 (state-min 1)

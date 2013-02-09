@@ -1,4 +1,4 @@
-(define-module (taylan godwars-puzzle-utils)
+(define-module (taylan godwars puzzle-utils)
   #:export (state-min
             state-max
             state-length
