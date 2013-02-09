@@ -13,7 +13,7 @@
             numeric-descriptor?
             numeric-descriptor-signed?
             numeric-descriptor-size
-            numeric-descriptor-set
+            numeric-descriptor-type
             numeric-descriptor-byte-order
             numeric-access
             vector-descriptor
@@ -91,13 +91,13 @@
   numeric-descriptor?
   (signed? numeric-descriptor-signed?)
   (size numeric-descriptor-size)
-  (set numeric-descriptor-set)
+  (set numeric-descriptor-type)
   (byte-order numeric-descriptor-byte-order))
 
 (define (numeric-descriptor signed? size set . maybe-byte-order)
   (assert (boolean? signed?))
   (assert (and (integer? size) (< 0 size)))
-  (assert (memq set '(integer float complex)))
+  (assert (memq set '(bool char integer float complex)))
   (assert (or (null? maybe-byte-order)
               (and (memq (car maybe-byte-order) (list (endianness little)
                                                       (endianness big)))
