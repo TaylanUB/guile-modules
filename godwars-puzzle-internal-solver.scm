@@ -46,7 +46,8 @@
   (operation-sequence state-progress-operation-sequence))
 
 (define (find-solutions start-state goal-state operations)
-  (let ((state-progress-queue (make-queue (make-state-progress start-state (make-sequence))))
+  (let ((state-progress-queue
+         (make-queue (make-state-progress start-state (make-sequence))))
         (visited-states (make-set))
         (solutions (make-sequence)))
     (let loop ()
@@ -54,7 +55,8 @@
           solutions
           (let* ((state-progress (queue-pop! state-progress-queue))
                  (state (state-progress-state state-progress))
-                 (operation-sequence (state-progress-operation-sequence state-progress)))
+                 (operation-sequence
+                  (state-progress-operation-sequence state-progress)))
             (unless (set-element? visited-states state)
               (set-add! visited-states state)
               (for-each
@@ -62,8 +64,8 @@
                  (catch 'jam
                    (lambda ()
                      (let ((next-state (apply-operation state operation))
-                           (operation-sequence (sequence-append operation-sequence
-                                                                operation))) 
+                           (operation-sequence
+                            (sequence-append operation-sequence operation)))
                        (unless (set-element? visited-states next-state)
                          (if (state-equal? goal-state next-state)
                              (sequence-append! solutions operation-sequence)
