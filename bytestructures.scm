@@ -12,8 +12,7 @@
             define-bytestructure-descriptor-type))
 
 (use-modules (srfi srfi-1)
-             (srfi srfi-9)
-             (rnrs bytevector))
+             (srfi srfi-9))
 
 (define-syntax assert
   (syntax-rules ()
@@ -52,7 +51,7 @@
     (apply (bytestructure-descriptor-type-constructor
             (cond
              ((find (lambda (type)
-                      (string= name (bytestructure-descriptor-type-name type)))
+                      (eq? name (bytestructure-descriptor-type-name type)))
                     (bytestructure-descriptor-types))
               => (lambda (obj) obj))
              (else (error "Not a bytestructure-descriptor-type name." name))))
