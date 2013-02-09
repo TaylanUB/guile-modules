@@ -121,22 +121,10 @@
   vector-access
   #t)
 
-;;; Field descriptors
+;;; Helpers for Structures and Unions
 
-(define (field name description)
-  (assert (symbol? name))
-  (cons name (bytestructure-descriptor description)))
-
-(define (field? obj)
-  (and (pair? obj)
-       (symbol? (car obj))
-       (bytestructure-descriptor? (cdr obj))))
-
-(define (field-name field)
-  (car field))
-
-(define (field-content-descriptor field)
-  (cdr field))
+(define field-name car)
+(define field-content-descriptor cdr)
 
 (define (construct-fields fields)
   (map (lambda (field)
@@ -147,7 +135,7 @@
                (bytestructure-descriptor (cadr field))))
        fields))
 
-;;; Structure descriptors
+;;; Structures
 
 (define-record-type :structure-descriptor
   (structure-descriptor* fields size)
@@ -165,15 +153,14 @@
 
 (define (structure-access bytevector descriptor accessors offset)
   (let ((fields (structure-descriptor-fields descriptor))
-        (target-field-name (car accessors))
-        (rest-accessors (cdr accessors)))
+        (target-field-name (car accessors)))
     (let try-next ((field (car fields))
                    (fields (cdr fields))
                    (offset offset))
       (if (eq? (field-name field) target-field-name)
           (bytestructure-access bytevector
                                 (field-content-descriptor field)
-                                rest-accessors
+                                (cdr accessors)
                                 offset)
           (try-next (car fields)
                     (cdr fields)
@@ -188,7 +175,7 @@
   structure-access
   #t)
 
-;;; Union descriptors
+;;; Unions
 
 (define-record-type :union-descriptor
   (union-descriptor* fields size)
@@ -207,8 +194,9 @@
 
 (define (union-access bytevector descriptor accessors offset)
   (bytestructure-access bytevector
-                        (field-type (assq (car accessors)
-                                          (union-descriptor-fields type)))
+                        (field-content-descriptor
+                         (assq (car accessors)
+                               (union-descriptor-fields type)))
                         (cdr accessors)
                         offset))
 
