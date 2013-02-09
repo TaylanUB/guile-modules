@@ -5,21 +5,33 @@
 ;;; some array/struct/union on it, then accessed members.
 
 (define-module (taylan bytestructures)
-  #:export (bytestructure-descriptor?
+  #:export (bytestructure-descriptor
+            bytestructure-descriptor?
+            bytestructure-descriptor-size
             bytestructure-access
+            numeric-descriptor
+            numeric-descriptor?
+            numeric-descriptor-signed?
+            numeric-descriptor-size
+            numeric-descriptor-set
+            numeric-descriptor-byte-order
+            numeric-access
             vector-descriptor
             vector-descriptor?
-            vector-descriptor-type
+            vector-descriptor-content-descriptor
             vector-descriptor-length
             vector-descriptor-size
+            vector-access
             structure-descriptor
             structure-descriptor?
             structure-descriptor-fields
             structure-descriptor-size
+            structure-access
             union-descriptor
             union-descriptor?
             union-descriptor-fields
-            union-descriptor-size))
+            union-descriptor-size
+            union-access))
 
 (use-modules (srfi srfi-1)
              (srfi srfi-9)
@@ -31,17 +43,58 @@
      (unless expression
        (error "Assertion not met." 'expression)))))
 
-;;; Numeric types
+;;; Generals
 
-(define-record-type :numeric-type
-  (numeric-type* signed? size set byte-order)
-  numeric-type?
-  (signed? numeric-type-signed?)
-  (size numeric-type-size)
-  (set numeric-type-set)
-  (byte-order numeric-type-byte-order))
+(define (bytestructure-descriptor description)
+  ;; TODO
+  )
 
-(define (numeric-type signed? size set . maybe-byte-order)
+(define (bytestructure-descriptor? obj)
+  (any (lambda (pred) (pred obj))
+       (list numeric-descriptor?
+             vector-descriptor?
+             structure-descriptor?
+             union-descriptor?)))
+
+(define (bytestructure-descriptor-size descriptor)
+  (apply (cond
+          ((numeric-descriptor? descriptor)
+           numeric-descriptor-size)
+          ((vector-descriptor? descriptor)
+           vector-descriptor-size)
+          ((structure-descriptor? descriptor)
+           structure-descriptor-size)
+          (else
+           union-descriptor-size))
+         (list descriptor)))
+
+(define (bytestructure-access bytevector descriptor accessors offset)
+  (if (null? accessors)
+      (if (numeric-descriptor? descriptor)
+          (numeric-access bytevector descriptor offset)
+          (let* ((size (bytestructure-descriptor-size descriptor))
+                 (copy (make-bytevector size)))
+            (bytevector-copy! bytevector offset copy 0 size)
+            copy))
+      (if (numeric-descriptor? descriptor)
+          (error "Superfluous accessors." accessors)
+          (apply (cond
+                  ((vector-descriptor? descriptor) vector-access)
+                  ((structure-descriptor? descriptor) structure-access)
+                  (else union-access))
+                 (list bytevector descriptor accessors offset)))))
+
+;;; Numeric descriptors
+
+(define-record-type :numeric-descriptor
+  (numeric-descriptor* signed? size set byte-order)
+  numeric-descriptor?
+  (signed? numeric-descriptor-signed?)
+  (size numeric-descriptor-size)
+  (set numeric-descriptor-set)
+  (byte-order numeric-descriptor-byte-order))
+
+(define (numeric-descriptor signed? size set . maybe-byte-order)
   (assert (boolean? signed?))
   (assert (and (integer? size) (< 0 size)))
   (assert (memq set '(integer float complex)))
@@ -53,26 +106,35 @@
   (let ((byte-order (if (null? maybe-byte-order)
                         (native-endianness)
                         (car maybe-byte-order))))
-    (numeric-type* signed? size set byte-order)))
+    (numeric-descriptor* signed? size set byte-order)))
 
-(define (numeric-type-access bytevector type offset)
+(define (numeric-access bytevector descriptor offset)
   ;; TODO
   (bytevector-u8-ref bytevector offset))
 
 ;;; Vector descriptors
 
 (define-record-type :vector-descriptor
-  (vector-descriptor* type length size)
+  (vector-descriptor* content-descriptor length size)
   vector-descriptor?
-  (type vector-descriptor-type)
+  (content-descriptor vector-descriptor-content-descriptor)
   (length vector-descriptor-length)
   (size vector-descriptor-size))
 
-(define (vector-descriptor type length)
-  (assert (bytestructure-descriptor? type))
+(define (vector-descriptor content-descriptor length)
+  (assert (bytestructure-descriptor? content-descriptor))
   (assert (and (integer? length) (<= 0 length)))
   (vector-descriptor*
-   type length (* length (bytestructure-descriptor-size type))))
+   content-descriptor length
+   (* length (bytestructure-descriptor-size content-descriptor))))
+
+(define (vector-access bytevector descriptor accessors offset)
+  (let ((content-descriptor (vector-descriptor-content-descriptor descriptor))
+        (index (car accessors))
+        (rest-accessors (cdr accessors)))
+    (bytestructure-access bytevector content-descriptor rest-accessors
+                          (+ offset (* index (bytestructure-descriptor-size
+                                              content-descriptor))))))
 
 ;;; Field descriptors
 
@@ -85,7 +147,7 @@
 (define (field-name field)
   (car field))
 
-(define (field-type field)
+(define (field-content-descriptor field)
   (cadr field))
 
 ;;; Structure descriptors
@@ -102,8 +164,25 @@
   (structure-descriptor*
    fields (apply + (map (lambda (field)
                           (bytestructure-descriptor-size
-                           (field-type field)))
+                           (field-content-descriptor field)))
                         fields))))
+
+(define (structure-access bytevector descriptor accessors offset)
+  (let ((fields (structure-descriptor-fields descriptor))
+        (target-field-name (car accessors))
+        (rest-accessors (cdr accessors)))
+    (let try-next ((field (car fields))
+                   (fields (cdr fields))
+                   (offset offset))
+      (if (eq? (field-name field) target-field-name)
+          (bytestructure-access bytevector
+                                (field-content-descriptor field)
+                                rest-accessors
+                                offset)
+          (try-next (car fields)
+                    (cdr fields)
+                    (+ offset (bytestructure-descriptor-size
+                               (field-content-descriptor field))))))))
 
 ;;; Union descriptors
 
@@ -119,75 +198,12 @@
   (union-descriptor*
    fields (apply max (map (lambda (field)
                             (bytestructure-descriptor-size
-                             (field-type field)))
+                             (field-content-descriptor field)))
                           fields))))
 
-;;; Generalization
-
-(define (bytestructure-descriptor? obj)
-  (any (lambda (pred) (pred obj))
-       (list numeric-type?
-             vector-descriptor?
-             structure-descriptor?
-             union-descriptor?)))
-
-(define (bytestructure-descriptor-size type)
-  (apply (cond
-          ((numeric-type? type)
-           numeric-type-size)
-          ((vector-descriptor? type)
-           vector-descriptor-size)
-          ((structure-descriptor? type)
-           structure-descriptor-size)
-          (else
-           union-descriptor-size))
-         (list type)))
-
-(define (bytestructure-access bytevector
-                              type
-                              offset
-                              accessors)
-  (if (null? accessors)
-      (if (numeric-type? type)
-          (numeric-type-access bytevector type offset)
-          (let* ((size (bytestructure-descriptor-size type))
-                 (copy (make-bytevector size)))
-            (bytevector-copy! bytevector offset copy 0 size)
-            copy))
-      (cond
-       ((vector-descriptor? type)
-        (let ((sub-type (vector-descriptor-type type)))
-          (bytestructure-access bytevector
-                                sub-type
-                                (+ offset (vector-offset type (car accessors)))
-                                (cdr accessors))))
-       ((structure-descriptor? type)
-        (let-values (((sub-type sub-offset)
-                      (structure-access-helper type (car accessors))))
-          (bytestructure-access bytevector
-                                sub-type
-                                (+ offset sub-offset)
-                                (cdr accessors))))
-       ((union-descriptor? type)
-        (bytestructure-access bytevector
-                              (field-type (assq (car accessors)
-                                                (union-descriptor-fields type)))
-                              offset
-                              (cdr accessors)))
-       (else
-        (error "Superfluous accessors." accessors)))))
-
-(define (vector-offset type index)
-  (* index (bytestructure-descriptor-size type)))
-
-(define (structure-access-helper type target-field-name)
-  (let ((fields (structure-descriptor-fields type)))
-    (let try-next ((field (car fields))
-                   (fields (cdr fields))
-                   (offset 0))
-      (if (eq? target-field-name (field-name field))
-          (values (field-type field) offset)
-          (try-next (car fields)
-                    (cdr fields)
-                    (+ offset (bytestructure-descriptor-size
-                               (field-type field))))))))
+(define (union-access bytevector descriptor accessors offset)
+  (bytestructure-access bytevector
+                        (field-type (assq (car accessors)
+                                          (union-descriptor-fields type)))
+                        (cdr accessors)
+                        offset))
