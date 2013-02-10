@@ -132,13 +132,6 @@
     (values (* index (bytestructure-descriptor-size content-descriptor))
             content-descriptor)))
 
-;; (define (vector-access bytevector descriptor index offset)
-;;   (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
-;;     (bytestructure-terminal-access bytevector content-descriptor
-;;                                    (+ offset
-;;                                       (* index (bytestructure-descriptor-size
-;;                                                 content-descriptor))))))
-
 (define-bytestructure-descriptor-type
   'vector
   vector-descriptor
@@ -189,20 +182,6 @@
                     (+ offset (bytestructure-descriptor-size
                                (field-content-descriptor field))))))))
 
-;; (define (structure-access bytevector descriptor offset key)
-;;   (let ((fields (structure-descriptor-fields descriptor)))
-;;     (let try-next ((field (car fields))
-;;                    (fields (cdr fields))
-;;                    (offset offset))
-;;       (if (eq? (field-name field) key)
-;;           (bytestructure-terminal-access bytevector
-;;                                          (field-content-descriptor field)
-;;                                          offset)
-;;           (try-next (car fields)
-;;                     (cdr fields)
-;;                     (+ offset (bytestructure-descriptor-size
-;;                                (field-content-descriptor field))))))))
-
 (define-bytestructure-descriptor-type
   'struct
   structure-descriptor
@@ -231,12 +210,6 @@
 (define (union-access bytevector descriptor key)
   (values 0 (field-content-descriptor
              (assq key (union-descriptor-fields descriptor)))))
-
-;; (define (union-access bytevector descriptor offset key)
-;;   (bytestructure-terminal-access bytevector
-;;                                  (field-content-descriptor
-;;                                   (assq key (union-descriptor-fields type)))
-;;                                  offset))
 
 (define-bytestructure-descriptor-type
   'union
