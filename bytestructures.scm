@@ -9,10 +9,12 @@
             bytestructure-descriptor?
             bytestructure-descriptor-size
             bytestructure-access
+            bytestructure-access*
             define-bytestructure-descriptor-type))
 
 (use-modules (srfi srfi-1)
-             (srfi srfi-9))
+             (srfi srfi-9)
+             (srfi srfi-11))
 
 (define-syntax assert
   (syntax-rules ()
@@ -41,7 +43,8 @@
   (bytestructure-descriptor-types
    (cons (bytestructure-descriptor-type name constructor predicate size-accessor
                                         accessor compound?)
-         (bytestructure-descriptor-types))))
+         (bytestructure-descriptor-types)))
+  *unspecified*)
 
 ;;; Generals
 
@@ -72,45 +75,69 @@
      (else (error "Not a bytestructure-descriptor." descriptor))))
    descriptor))
 
-(define (bytestructure-access bytevector descriptor accessors offset)
+(define-syntax bytestructure-access
+  (syntax-rules ()
+    ((bytestructure-access bytevector descriptor accessor ...)
+     (bytestructure-access* bytevector descriptor 0 accessor ...))))
+
+(define-syntax bytestructure-access*
+  (syntax-rules ()
+    ((bytestructure-access* bytevector descriptor offset)
+     (bytestructure-terminal-access bytevector descriptor offset))
+    ((bytestructure-access* bytevector descriptor offset accessor accessors ...)
+     (let ((type (bytestructure-descriptor-find-type descriptor)))
+       (let-values (((offset* descriptor*)
+                     ((bytestructure-descriptor-type-accessor type)
+                      bytevector descriptor accessor)))
+         (bytestructure-access* bytevector descriptor* (+ offset offset*)
+                                accessors ...))))))
+
+(define (bytestructure-terminal-access bytevector descriptor offset)
   (let ((type (bytestructure-descriptor-find-type descriptor)))
-    (if (null? accessors)
-        (if (bytestructure-descriptor-type-compound? type)
-            (let* ((size ((bytestructure-descriptor-type-size-accessor type)
-                          descriptor))
-                   (copy (make-bytevector size)))
-              (bytevector-copy! bytevector offset copy 0 size)
-              copy)
-            ((bytestructure-descriptor-type-accessor type)
-             bytevector descriptor offset))
-        (if (not (bytestructure-descriptor-type-compound? type))
-            (error "Superfluous accessors." accessors)
-            ((bytestructure-descriptor-type-accessor type)
-             bytevector descriptor accessors offset)))))
+    (if (bytestructure-descriptor-type-compound? type)
+        (let* ((size ((bytestructure-descriptor-type-size-accessor type)
+                      descriptor))
+               (copy (make-bytevector size)))
+          (bytevector-copy! bytevector offset copy 0 size)
+          copy)
+        ((bytestructure-descriptor-type-accessor type)
+         bytevector descriptor offset))))
+
+(define (bytestructure-compound-access bytevector descriptor accessor)
+  (bytestructure-compound-access* bytevector descriptor 0 accessor))
+
+(define (bytestructure-compound-access* bytevector descriptor offset accessor)
+  (let ((type (bytestructure-descriptor-find-type descriptor)))
+    ((bytestructure-descriptor-type-accessor type)
+     bytevector descriptor offset accessor)))
 
 ;;; Vector
 
 (define-record-type :vector-descriptor
-  (vector-descriptor* content-descriptor length size)
+  (vector-descriptor* length content-descriptor size)
   vector-descriptor?
-  (content-descriptor vector-descriptor-content-descriptor)
   (length vector-descriptor-length)
+  (content-descriptor vector-descriptor-content-descriptor)
   (size vector-descriptor-size))
 
-(define (vector-descriptor content-description length)
+(define (vector-descriptor length content-description)
   (assert (and (integer? length) (<= 0 length)))
   (let ((content-descriptor (bytestructure-descriptor content-description)))
     (vector-descriptor*
-     content-descriptor length
+     length content-descriptor
      (* length (bytestructure-descriptor-size content-descriptor)))))
 
-(define (vector-access bytevector descriptor accessors offset)
-  (let ((content-descriptor (vector-descriptor-content-descriptor descriptor))
-        (index (car accessors))
-        (rest-accessors (cdr accessors)))
-    (bytestructure-access bytevector content-descriptor rest-accessors
-                          (+ offset (* index (bytestructure-descriptor-size
-                                              content-descriptor))))))
+(define (vector-access bytevector descriptor index)
+  (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
+    (values (* index (bytestructure-descriptor-size content-descriptor))
+            content-descriptor)))
+
+;; (define (vector-access bytevector descriptor index offset)
+;;   (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
+;;     (bytestructure-terminal-access bytevector content-descriptor
+;;                                    (+ offset
+;;                                       (* index (bytestructure-descriptor-size
+;;                                                 content-descriptor))))))
 
 (define-bytestructure-descriptor-type
   'vector
@@ -150,21 +177,31 @@
                              (field-content-descriptor field)))
                           fields)))))
 
-(define (structure-access bytevector descriptor accessors offset)
-  (let ((fields (structure-descriptor-fields descriptor))
-        (target-field-name (car accessors)))
+(define (structure-access bytevector descriptor key)
+  (let ((fields (structure-descriptor-fields descriptor)))
     (let try-next ((field (car fields))
                    (fields (cdr fields))
-                   (offset offset))
-      (if (eq? (field-name field) target-field-name)
-          (bytestructure-access bytevector
-                                (field-content-descriptor field)
-                                (cdr accessors)
-                                offset)
+                   (offset 0))
+      (if (eq? (field-name field) key)
+          (values offset (field-content-descriptor field))
           (try-next (car fields)
                     (cdr fields)
                     (+ offset (bytestructure-descriptor-size
                                (field-content-descriptor field))))))))
+
+;; (define (structure-access bytevector descriptor offset key)
+;;   (let ((fields (structure-descriptor-fields descriptor)))
+;;     (let try-next ((field (car fields))
+;;                    (fields (cdr fields))
+;;                    (offset offset))
+;;       (if (eq? (field-name field) key)
+;;           (bytestructure-terminal-access bytevector
+;;                                          (field-content-descriptor field)
+;;                                          offset)
+;;           (try-next (car fields)
+;;                     (cdr fields)
+;;                     (+ offset (bytestructure-descriptor-size
+;;                                (field-content-descriptor field))))))))
 
 (define-bytestructure-descriptor-type
   'struct
@@ -191,13 +228,15 @@
                                (field-content-descriptor field)))
                             fields)))))
 
-(define (union-access bytevector descriptor accessors offset)
-  (bytestructure-access bytevector
-                        (field-content-descriptor
-                         (assq (car accessors)
-                               (union-descriptor-fields type)))
-                        (cdr accessors)
-                        offset))
+(define (union-access bytevector descriptor key)
+  (values 0 (field-content-descriptor
+             (assq key (union-descriptor-fields descriptor)))))
+
+;; (define (union-access bytevector descriptor offset key)
+;;   (bytestructure-terminal-access bytevector
+;;                                  (field-content-descriptor
+;;                                   (assq key (union-descriptor-fields type)))
+;;                                  offset))
 
 (define-bytestructure-descriptor-type
   'union
