@@ -5,16 +5,17 @@
 ;;; array/struct/union on it, then accessed members.
 
 (define-module (taylan bytestructures)
-  #:export (bytestructure-descriptor
+  #:export (define-bytestructure-descriptor-type
+            bytestructure-descriptor
             bytestructure-descriptor?
             bytestructure-descriptor-size
             bytestructure-access
-            bytestructure-access*
-            define-bytestructure-descriptor-type))
+            bytestructure-access*))
 
 (use-modules (srfi srfi-1)
              (srfi srfi-9)
-             (srfi srfi-11))
+             (srfi srfi-11)
+             (rnrs bytevectors))
 
 (define-syntax assert
   (syntax-rules ()
@@ -25,91 +26,149 @@
 ;;; Types
 
 (define-record-type :bytestructure-descriptor-type
-  (bytestructure-descriptor-type name constructor predicate size-accessor
-                                 accessor compound?)
+  (bytestructure-descriptor-type compound? constructor predicate size
+                                 bytevector-constructor-helper
+                                 bytevector-accessor bytevector-mutator)
   bytestructure-descriptor-type?
-  (name bytestructure-descriptor-type-name)
-  (constructor bytestructure-descriptor-type-constructor)
+  (compound? bytestructure-descriptor-type-compound?)
+  (constructor bytestructure-descriptor-constructor)
   (predicate bytestructure-descriptor-type-predicate)
-  (size-accessor bytestructure-descriptor-type-size-accessor)
-  (accessor bytestructure-descriptor-type-accessor)
-  (compound? bytestructure-descriptor-type-compound?))
+  (size bytestructure-descriptor-type-size)
+  (bytevector-constructor-helper bytevector-constructor-helper)
+  (bytevector-accessor bytevector-accessor)
+  (bytevector-mutator bytevector-mutator))
 
 (define bytestructure-descriptor-types (make-parameter '()))
 
-(define (define-bytestructure-descriptor-type
-          name constructor predicate size-accessor accessor compound?)
-  ;; TODO assertions
+(define (define-bytestructure-descriptor-type name constructor predicate
+          size-or-size-accessor bytevector-accessor bytevector-mutator)
+  (assert (symbol? name))
+  (assert (every procedure? (list constructor predicate bytevector-accessor
+                                  bytevector-mutator)))
+  (assert (or (procedure? size-or-size-accessor)
+              (and (integer? size-or-size-accessor)
+                   (exact? size-or-size-accessor)
+                   (< 0 size-or-size-accessor))))
   (bytestructure-descriptor-types
-   (cons (bytestructure-descriptor-type name constructor predicate size-accessor
-                                        accessor compound?)
-         (bytestructure-descriptor-types)))
+   (alist-cons
+    name (bytestructure-descriptor-type #f constructor predicate
+                                        size-or-size-accessor #f
+                                        bytevector-accessor bytevector-mutator)
+    (bytestructure-descriptor-types)))
   *unspecified*)
+
+(define (define-bytestructure-descriptor-compound-type name constructor
+          predicate size-accessor bytevector-accessor
+          bytevector-constructor-helper)
+  (assert (symbol? name))
+  (assert (every procedure? (list constructor predicate size-accessor
+                                  bytevector-accessor
+                                  bytevector-constructor-helper)))
+  (bytestructure-descriptor-types
+   (alist-cons
+    name (bytestructure-descriptor-type #t constructor predicate size-accessor
+                                        bytevector-constructor-helper
+                                        bytevector-accessor #f)
+    (bytestructure-descriptor-types)))
+  *unspecified*)
+
+(define (bytestructure-descriptor-type-with-name name)
+  (cdr (or (assoc name (bytestructure-descriptor-types))
+           (error "Not a bytestructure-descriptor-type name." name))))
+
+(define (bytestructure-descriptor-find-type descriptor)
+  (or (find (lambda (type)
+              ((bytestructure-descriptor-type-predicate type) descriptor))
+            (bytestructure-descriptor-types))
+      (error "Not a bytestructure-descriptor." descriptor)))
 
 ;;; Generals
 
 (define (bytestructure-descriptor description)
-  (let ((name (car description))
-        (contents (cdr description)))
-    (apply (bytestructure-descriptor-type-constructor
-            (cond
-             ((find (lambda (type)
-                      (eq? name (bytestructure-descriptor-type-name type)))
-                    (bytestructure-descriptor-types))
-              => (lambda (obj) obj))
-             (else (error "Not a bytestructure-descriptor-type name." name))))
-           contents)))
-
-(define (bytestructure-descriptor-find-type descriptor)
-  (find (lambda (type)
-          ((bytestructure-descriptor-type-predicate type) descriptor))
-        (bytestructure-descriptor-types)))
+  (cond
+   ((symbol? description)
+    ((bytestructure-descriptor-constructor
+      (bytestructure-descriptor-type-with-name description))))
+   ((list? description)
+    (let ((name (car description))
+          (contents (cdr description)))
+      (apply (bytestructure-descriptor-constructor
+              (bytestructure-descriptor-type-with-name name))
+             contents)))
+   (else (error "Invalid bytestructure-descriptor description." description))))
 
 (define (bytestructure-descriptor? obj)
-  (bytestructure-descriptor-find-type obj))
+  (not (not (bytestructure-descriptor-find-type obj))))
 
 (define (bytestructure-descriptor-size descriptor)
-  ((bytestructure-descriptor-type-size-accessor
-    (cond
-     ((bytestructure-descriptor-find-type descriptor) => (lambda (obj) obj))
-     (else (error "Not a bytestructure-descriptor." descriptor))))
-   descriptor))
+  (let* ((type (bytestructure-descriptor-find-type descriptor))
+         (size (bytestructure-descriptor-type-size type)))
+    (if (procedure? size)
+        (size descriptor)
+        size)))
+
+(define-syntax bytestructure
+  (syntax-rules ()
+    ((_ descriptor)
+     (make-bytevector (bytestructure-descriptor-size descriptor)))
+    ((_ descriptor (value ...))
+     (let ((bytevector (bytectructure descriptor)))
+       (bytestructure* bytevector 0 (value ...))
+       bytevector))))
+
+(define-syntax bytectructure*
+  (syntax-rules ()
+    ((_ descriptor bytevector offset (value ...))
+     (let ((type (bytestructure-descriptor-find-type descriptor))
+           (index 0))
+       (begin 
+         (let-values (((descriptor* offset*)
+                       ((bytevector-constructor-helper type) descriptor index)))
+           (bytestructure* bytevector (+ offset offset*) value))
+         (set! index (+ 1 index)))
+       ...))
+    ((_ descriptor bytevector offset value)
+     ((bytevector-mutator (bytestructure-descriptor-find-type descriptor))
+      bytevector offset value))))
 
 (define-syntax bytestructure-access
   (syntax-rules ()
-    ((bytestructure-access bytevector descriptor accessor ...)
+    ((_ bytevector descriptor accessor ...)
      (bytestructure-access* bytevector descriptor 0 accessor ...))))
 
 (define-syntax bytestructure-access*
   (syntax-rules ()
-    ((bytestructure-access* bytevector descriptor offset)
-     (bytestructure-terminal-access bytevector descriptor offset))
-    ((bytestructure-access* bytevector descriptor offset accessor accessors ...)
+    ((_ bytevector descriptor offset)
+     (let ((type (bytestructure-descriptor-find-type descriptor)))
+       (if (bytestructure-descriptor-type-compound? type)
+           (values bytevector descriptor offset)
+           ((bytevector-accessor type) bytevector descriptor offset))))
+    ((_ bytevector descriptor offset accessor accessors ...)
      (let ((type (bytestructure-descriptor-find-type descriptor)))
        (let-values (((offset* descriptor*)
-                     ((bytestructure-descriptor-type-accessor type)
-                      bytevector descriptor accessor)))
+                     ((bytevector-accessor type) descriptor accessor)))
          (bytestructure-access* bytevector descriptor* (+ offset offset*)
                                 accessors ...))))))
 
-(define (bytestructure-terminal-access bytevector descriptor offset)
-  (let ((type (bytestructure-descriptor-find-type descriptor)))
-    (if (bytestructure-descriptor-type-compound? type)
-        (let* ((size ((bytestructure-descriptor-type-size-accessor type)
-                      descriptor))
-               (copy (make-bytevector size)))
-          (bytevector-copy! bytevector offset copy 0 size)
-          copy)
-        ((bytestructure-descriptor-type-accessor type)
-         bytevector descriptor offset))))
+(define-syntax bytestructure-set!
+  (syntax-rules ()
+    ((_ bytevector descriptor accessor ... value)
+     (bytestructure-set!* bytevector descriptor 0 accessor ... value))))
 
-(define (bytestructure-compound-access bytevector descriptor accessor)
-  (bytestructure-compound-access* bytevector descriptor 0 accessor))
-
-(define (bytestructure-compound-access* bytevector descriptor offset accessor)
-  (let ((type (bytestructure-descriptor-find-type descriptor)))
-    ((bytestructure-descriptor-type-accessor type)
-     bytevector descriptor offset accessor)))
+(define-syntax bytestructure-set!*
+  (syntax-rules ()
+    ((_ bytevector descriptor offset value)
+     (let ((type (bytestructure-descriptor-find-type descriptor)))
+       (if (bytestructure-descriptor-type-compound? type)
+           (bytevector-copy! value 0 bytevector offset
+                             (bytevector-length value))
+           ((bytevector-mutator type) bytevector descriptor offset value))))
+    ((_ bytevector descriptor offset accessor accessors ... value)
+     (let ((type (bytestructure-descriptor-find-type descriptor)))
+       (let-values (((offset* descriptor*)
+                     ((bytevector-accessor type) descriptor accessor)))
+         (bytestructure-set!* bytevector descriptor* (+ offset offset*)
+                              accessors ...))))))
 
 ;;; Vector
 
@@ -127,18 +186,18 @@
      length content-descriptor
      (* length (bytestructure-descriptor-size content-descriptor)))))
 
-(define (vector-access bytevector descriptor index)
+(define (vector-access descriptor index)
   (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
     (values (* index (bytestructure-descriptor-size content-descriptor))
             content-descriptor)))
 
-(define-bytestructure-descriptor-type
+(define-bytestructure-descriptor-compound-type
   'vector
   vector-descriptor
   vector-descriptor?
   vector-descriptor-size
-  vector-access
-  #t)
+  (lambda () #f)
+  vector-access)
 
 ;;; Helpers for Structures and Unions
 
@@ -154,24 +213,24 @@
                (bytestructure-descriptor (cadr field))))
        fields))
 
-;;; Structures
+;;; Structs
 
-(define-record-type :structure-descriptor
-  (structure-descriptor* fields size)
-  structure-descriptor?
-  (fields structure-descriptor-fields)
-  (size structure-descriptor-size))
+(define-record-type :struct-descriptor
+  (struct-descriptor* fields size)
+  struct-descriptor?
+  (fields struct-descriptor-fields)
+  (size struct-descriptor-size))
 
-(define (structure-descriptor fields)
+(define (struct-descriptor . fields)
   (let ((fields (construct-fields fields)))
-    (structure-descriptor*
+    (struct-descriptor*
      fields (apply + (map (lambda (field)
                             (bytestructure-descriptor-size
                              (field-content-descriptor field)))
                           fields)))))
 
-(define (structure-access bytevector descriptor key)
-  (let ((fields (structure-descriptor-fields descriptor)))
+(define (struct-access descriptor key)
+  (let ((fields (struct-descriptor-fields descriptor)))
     (let try-next ((field (car fields))
                    (fields (cdr fields))
                    (offset 0))
@@ -182,13 +241,13 @@
                     (+ offset (bytestructure-descriptor-size
                                (field-content-descriptor field))))))))
 
-(define-bytestructure-descriptor-type
+(define-bytestructure-descriptor-compound-type
   'struct
-  structure-descriptor
-  structure-descriptor?
-  structure-descriptor-size
-  structure-access
-  #t)
+  struct-descriptor
+  struct-descriptor?
+  struct-descriptor-size
+  (lambda () #f)
+  struct-access)
 
 ;;; Unions
 
@@ -198,7 +257,7 @@
   (fields union-descriptor-fields)
   (size union-descriptor-size))
 
-(define (union-descriptor fields)
+(define (union-descriptor . fields)
   (assert (list? fields))
   (let ((fields (construct-fields fields)))
     (union-descriptor*
@@ -207,7 +266,7 @@
                                (field-content-descriptor field)))
                             fields)))))
 
-(define (union-access bytevector descriptor key)
+(define (union-access descriptor key)
   (values 0 (field-content-descriptor
              (assq key (union-descriptor-fields descriptor)))))
 
@@ -216,5 +275,5 @@
   union-descriptor
   union-descriptor?
   union-descriptor-size
-  union-access
-  #t)
+  (lambda () #f)
+  union-access)
