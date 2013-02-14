@@ -303,10 +303,30 @@
   (values 0 (field-content-descriptor
              (field-find key (union-descriptor-fields descriptor)))))
 
-(define-bytestructure-descriptor-type
+(define-bytestructure-descriptor-compound-type
   'union
   union-descriptor
   union-descriptor?
   union-descriptor-size
   union-constructor-helper
   union-accessor-helper)
+
+;;; u8
+
+(define-record-type :u8-descriptor
+  (u8-descriptor)
+  u8-descriptor?)
+
+(define (u8-accessor bytevector descriptor offset)
+  (bytevector-u8-ref bytevector offset))
+
+(define (u8-set! bytevector descriptor offset value)
+  (bytevector-u8-set! bytevector offset value))
+
+(define-bytestructure-descriptor-type
+  'u8
+  u8-descriptor
+  u8-descriptor?
+  1
+  u8-accessor
+  u8-set!)
