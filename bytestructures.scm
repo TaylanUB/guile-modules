@@ -5,7 +5,9 @@
 ;;; array/struct/union on it, then accessed members.
 
 (define-module (taylan bytestructures)
-  #:export (define-bytestructure-descriptor-type
+  #:export (
+            define-bytestructure-descriptor-type
+            define-bytestructure-descriptor-compound-type
             bytestructure-descriptor
             bytestructure-descriptor?
             bytestructure-descriptor-size
@@ -224,7 +226,7 @@
                (bytestructure-descriptor (cadr field))))
        fields))
 
-;;; Structs
+;;; Struct
 
 (define-record-type :struct-descriptor
   (struct-descriptor* fields size)
@@ -278,7 +280,7 @@
   struct-constructor-helper
   struct-accessor-helper)
 
-;;; Unions
+;;; Union
 
 (define-record-type :union-descriptor
   (union-descriptor* fields size)
