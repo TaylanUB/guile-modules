@@ -180,32 +180,34 @@
 ;;; Vector
 
 (define-record-type :vector-descriptor
-  (vector-descriptor length content-descriptor size)
+  (vector-descriptor* length content-descriptor size)
   vector-descriptor?
   (length vector-descriptor-length)
   (content-descriptor vector-descriptor-content-descriptor)
   (size vector-descriptor-size))
 
-(let ()
-  (define (descriptor-constructor length content-description)
-    (assert (and (integer? length) (<= 0 length)))
-    (let ((content-descriptor (bytestructure-descriptor content-description)))
-      (vector-descriptor
-       length content-descriptor
-       (* length (bytestructure-descriptor-size content-descriptor)))))
+(define (vector-descriptor length content-description)
+  (assert (and (integer? length) (<= 0 length)))
+  (let ((content-descriptor (bytestructure-descriptor content-description)))
+    (vector-descriptor*
+     length content-descriptor
+     (* length (bytestructure-descriptor-size content-descriptor)))))
 
-  (define (accessor-helper descriptor index)
-    (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
-      (values (* index (bytestructure-descriptor-size content-descriptor))
-              content-descriptor)))
+(define (vector-constructor-helper descriptor index)
+  (vector-accessor-helper descriptor index))
 
-  (define-bytestructure-descriptor-compound-type
-    'vector
-    descriptor-constructor
-    vector-descriptor?
-    vector-descriptor-size
-    accessor-helper
-    accessor-helper))
+(define (vector-accessor-helper descriptor index)
+  (let ((content-descriptor (vector-descriptor-content-descriptor descriptor)))
+    (values (* index (bytestructure-descriptor-size content-descriptor))
+            content-descriptor)))
+
+(define-bytestructure-descriptor-compound-type
+  'vector
+  vector-descriptor
+  vector-descriptor?
+  vector-descriptor-size
+  vector-constructor-helper
+  vector-accessor-helper)
 
 ;;; Helpers for Structures and Unions
 
@@ -225,88 +227,86 @@
 ;;; Structs
 
 (define-record-type :struct-descriptor
-  (struct-descriptor fields size)
+  (struct-descriptor* fields size)
   struct-descriptor?
   (fields struct-descriptor-fields)
   (size struct-descriptor-size))
 
-(let ()
-  (define (descriptor-constructor . fields)
-    (let ((fields (construct-fields fields)))
-      (struct-descriptor
-       fields (apply + (map (lambda (field)
-                              (bytestructure-descriptor-size
-                               (field-content-descriptor field)))
-                            fields)))))
+(define (struct-descriptor . fields)
+  (let ((fields (construct-fields fields)))
+    (struct-descriptor*
+     fields (apply + (map (lambda (field)
+                            (bytestructure-descriptor-size
+                             (field-content-descriptor field)))
+                          fields)))))
 
-  (define (constructor-helper descriptor index)
-    (let ((fields (struct-descriptor-fields descriptor)))
-      (let try-next ((field (car fields))
-                     (fields (cdr fields))
-                     (offset 0)
-                     (index index))
-        (if (= index 0)
-            (values offset (field-content-descriptor field))
-            (if (not (null? fields))
-                (try-next (car fields)
-                          (cdr fields)
-                          (+ offset (bytestructure-descriptor-size
-                                     (field-content-descriptor field)))
-                          (- index 1))
-                (error "Struct field index out of bounds." index))))))
-  
-  (define (accessor-helper descriptor key)
-    (let ((fields (struct-descriptor-fields descriptor)))
-      (let try-next ((field (car fields))
-                     (fields (cdr fields))
-                     (offset 0))
-        (if (eq? (field-name field) key)
-            (values offset (field-content-descriptor field))
-            (if (not (null? fields))
-                (try-next (car fields)
-                          (cdr fields)
-                          (+ offset (bytestructure-descriptor-size
-                                     (field-content-descriptor field))))
-                (error "No such struct field." key))))))
+(define (struct-constructor-helper descriptor index)
+  (let ((fields (struct-descriptor-fields descriptor)))
+    (let try-next ((field (car fields))
+                   (fields (cdr fields))
+                   (offset 0)
+                   (index index))
+      (if (= index 0)
+          (values offset (field-content-descriptor field))
+          (if (not (null? fields))
+              (try-next (car fields)
+                        (cdr fields)
+                        (+ offset (bytestructure-descriptor-size
+                                   (field-content-descriptor field)))
+                        (- index 1))
+              (error "Struct field index out of bounds." index))))))
 
-  (define-bytestructure-descriptor-compound-type
-    'struct
-    descriptor-constructor
-    struct-descriptor?
-    struct-descriptor-size
-    constructor-helper
-    accessor-helper))
+(define (struct-accessor-helper descriptor key)
+  (let ((fields (struct-descriptor-fields descriptor)))
+    (let try-next ((field (car fields))
+                   (fields (cdr fields))
+                   (offset 0))
+      (if (eq? (field-name field) key)
+          (values offset (field-content-descriptor field))
+          (if (not (null? fields))
+              (try-next (car fields)
+                        (cdr fields)
+                        (+ offset (bytestructure-descriptor-size
+                                   (field-content-descriptor field))))
+              (error "No such struct field." key))))))
+
+(define-bytestructure-descriptor-compound-type
+  'struct
+  struct-descriptor
+  struct-descriptor?
+  struct-descriptor-size
+  struct-constructor-helper
+  struct-accessor-helper)
 
 ;;; Unions
 
 (define-record-type :union-descriptor
-  (union-descriptor fields size)
+  (union-descriptor* fields size)
   union-descriptor?
   (fields union-descriptor-fields)
   (size union-descriptor-size))
 
-(let ()
-  (define (descriptor-constructor . fields)
-    (assert (list? fields))
-    (let ((fields (construct-fields fields)))
-      (union-descriptor
-       fields (apply max (map (lambda (field)
-                                (bytestructure-descriptor-size
-                                 (field-content-descriptor field)))
-                              fields)))))
+(define (union-descriptor . fields)
+  (assert (list? fields))
+  (let ((fields (construct-fields fields)))
+    (union-descriptor*
+     fields (apply max (map (lambda (field)
+                              (bytestructure-descriptor-size
+                               (field-content-descriptor field)))
+                            fields)))))
 
-  (define (constructor-helper descriptor index)
-    (values 0 (field-content-descriptor
-               (list-ref (union-descriptor-fields descriptor) index))))
-  
-  (define (accessor-helper descriptor key)
-    (values 0 (field-content-descriptor
-               (field-find key (union-descriptor-fields descriptor)))))
+(define (union-constructor-helper descriptor index)
+  (values 0 (field-content-descriptor
+             (list-ref (union-descriptor-fields descriptor) index))))
 
-  (define-bytestructure-descriptor-type
-    'union
-    descriptor-constructor
-    union-descriptor?
-    union-descriptor-size
-    constructor-helper
-    accessor-helper))
+(define (union-accessor-helper descriptor key)
+  (values 0 (field-content-descriptor
+             (field-find key (union-descriptor-fields descriptor)))))
+
+(define-bytestructure-descriptor-type
+  'union
+  union-descriptor
+  union-descriptor?
+  union-descriptor-size
+  union-constructor-helper
+  union-accessor-helper)
