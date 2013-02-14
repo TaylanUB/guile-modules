@@ -1,8 +1,22 @@
-;;; Structured access to bytevector contents.  We try to imitate C's arrays,
-;;; structs, and unions here.  You use a "descriptor" together with "accessors"
-;;; to access parts of a bytevector whose contents conform to what is described
-;;; in your descriptor.  Like you had a void* in C and casted some
-;;; array/struct/union on it, then accessed members.
+;;; Structured access to bytevector contents.  A "bytestructure-descriptor"
+;;; describes a layout for the contents of a bytevector, or how the bytes are to
+;;; be converted into a Scheme object.  Every bytestructure-descriptor is of a
+;;; specific "bytestructure-descriptor-type" which can be either compound,
+;;; meaning that it's a container for other descriptors (e.g. vector, struct,
+;;; union), or not compound, meaning that it describes how to convert a sequence
+;;; of bytes into a Scheme object (e.g. u8, u16, u32, etc.).
+
+;;; Usage example:
+;;;
+;;; See how the pre-provided types are defined.
+;;;
+;;; (define desc (bytestructure-descriptor '(vector 2 (struct (x u8) (y u8)))))
+;;; (define bv (bytestructure descriptor ((0 1) (2 3))))
+;;; bv => #vu8(0 1 2 3)
+;;; (bytestructure-access bv desc 0 'x) => 0
+;;; (bytestructure-access bv desc 1 'y) => 3
+;;; (bytestructure-set! bv desc 0 'x 4)
+;;; (bytestructure-access bv desc 0 'x) => 4
 
 (define-module (taylan bytestructures)
   #:export (
@@ -104,6 +118,9 @@
       (apply (bytestructure-descriptor-constructor
               (bytestructure-descriptor-type-with-name name))
              contents)))
+   ;; See `construct-fields' for why this is useful.
+   ((bytestructure-descriptor? description)
+    description)
    (else (error "Invalid bytestructure-descriptor description." description))))
 
 (define (bytestructure-descriptor? obj)
