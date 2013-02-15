@@ -332,191 +332,53 @@
 
 ;;; Numeric types
 
-(define-record-type :float-descriptor
-  (float-descriptor)
-  float-descriptor?)
-
-(define (float-accessor bytevector descriptor offset)
-  (bytevector-ieee-single-native-ref bytevector offset))
-
-(define (float-set! bytevector descriptor offset value)
-  (bytevector-ieee-single-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'float
-  float-descriptor
-  float-descriptor?
-  4
-  float-accessor
-  float-set!)
-
-
-(define-record-type :double-descriptor
-  (double-descriptor)
-  double-descriptor?)
-
-(define (double-accessor bytevector descriptor offset)
-  (bytevector-ieee-double-native-ref bytevector offset))
-
-(define (double-set! bytevector descriptor offset value)
-  (bytevector-ieee-double-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'double
-  double-descriptor
-  double-descriptor?
-  8
-  double-accessor
-  double-set!)
-
-
-(define-record-type :int8-descriptor
-  (int8-descriptor)
-  int8-descriptor?)
-
-(define (int8-accessor bytevector descriptor offset)
-  (bytevector-s8-ref bytevector offset))
-
-(define (int8-set! bytevector descriptor offset value)
-  (bytevector-s8-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'int8
-  int8-descriptor
-  int8-descriptor?
-  1
-  int8-accessor
-  int8-set!)
-
-
-(define-record-type :uint8-descriptor
-  (uint8-descriptor)
-  uint8-descriptor?)
-
-(define (uint8-accessor bytevector descriptor offset)
-  (bytevector-u8-ref bytevector offset))
-
-(define (uint8-set! bytevector descriptor offset value)
-  (bytevector-u8-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'uint8
-  uint8-descriptor
-  uint8-descriptor?
-  1
-  uint8-accessor
-  uint8-set!)
-
-
-(define-record-type :int16-descriptor
-  (int16-descriptor)
-  int16-descriptor?)
-
-(define (int16-accessor bytevector descriptor offset)
-  (bytevector-s16-native-ref bytevector offset))
-
-(define (int16-set! bytevector descriptor offset value)
-  (bytevector-s16-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'int16
-  int16-descriptor
-  int16-descriptor?
-  2
-  int16-accessor
-  int16-set!)
-
-
-(define-record-type :uint16-descriptor
-  (uint16-descriptor)
-  uint16-descriptor?)
-
-(define (uint16-accessor bytevector descriptor offset)
-  (bytevector-u16-native-ref bytevector offset))
-
-(define (uint16-set! bytevector descriptor offset value)
-  (bytevector-u16-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'uint16
-  uint16-descriptor
-  uint16-descriptor?
-  2
-  uint16-accessor
-  uint16-set!)
-
-
-(define-record-type :int32-descriptor
-  (int32-descriptor)
-  int32-descriptor?)
-
-(define (int32-accessor bytevector descriptor offset)
-  (bytevector-s32-native-ref bytevector offset))
-
-(define (int32-set! bytevector descriptor offset value)
-  (bytevector-s32-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'int32
-  int32-descriptor
-  int32-descriptor?
-  4
-  int32-accessor
-  int32-set!)
-
-
-(define-record-type :uint32-descriptor
-  (uint32-descriptor)
-  uint32-descriptor?)
-
-(define (uint32-accessor bytevector descriptor offset)
-  (bytevector-u32-native-ref bytevector offset))
-
-(define (uint32-set! bytevector descriptor offset value)
-  (bytevector-u32-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'uint32
-  uint32-descriptor
-  uint32-descriptor?
-  4
-  uint32-accessor
-  uint32-set!)
-
-
-(define-record-type :int64-descriptor
-  (int64-descriptor)
-  int64-descriptor?)
-
-(define (int64-accessor bytevector descriptor offset)
-  (bytevector-s64-native-ref bytevector offset))
-
-(define (int64-set! bytevector descriptor offset value)
-  (bytevector-s64-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'int64
-  int64-descriptor
-  int64-descriptor?
-  8
-  int64-accessor
-  int64-set!)
-
-
-(define-record-type :uint64-descriptor
-  (uint64-descriptor)
-  uint64-descriptor?)
-
-(define (uint64-accessor bytevector descriptor offset)
-  (bytevector-u64-native-ref bytevector offset))
-
-(define (uint64-set! bytevector descriptor offset value)
-  (bytevector-u64-native-set! bytevector offset value))
-
-(define-bytestructure-descriptor-type
-  'uint64
-  uint64-descriptor
-  uint64-descriptor?
-  8
-  uint64-accessor
-  uint64-set!)
+(let-syntax
+    ((define-numeric-types
+       (syntax-rules ()
+         ((_ (name record-type constructor predicate size accessor mutator) ...)
+          (begin
+            (begin
+              (define-record-type record-type
+                (constructor)
+                predicate)
+              (define-bytestructure-descriptor-type
+                'name
+                constructor
+                predicate
+                size
+                (lambda (bytevector descriptor offset)
+                  (accessor bytevector offset))
+                (lambda (bytevector descriptor offset value)
+                  (mutator bytevector offset value))))
+            ...)))))
+  (define-numeric-types
+    (float :float-descriptor float-descriptor float-descriptor? 4
+           bytevector-ieee-single-native-ref
+           bytevector-ieee-single-native-set!)
+    (double :double-descriptor double-descriptor double-descriptor? 8
+            bytevector-ieee-double-native-ref
+            bytevector-ieee-double-native-set!)
+    (int8 :int8-descriptor int8-descriptor int8-descriptor? 1
+          bytevector-s8-ref
+          bytevector-s8-set!)
+    (uint8 :uint8-descriptor uint8-descriptor uint8-descriptor? 1
+           bytevector-u8-ref
+           bytevector-u8-set!)
+    (int16 :int16-descriptor int16-descriptor int16-descriptor? 2
+           bytevector-s16-native-ref
+           bytevector-s16-native-set!)
+    (uint16 :uint16-descriptor uint16-descriptor uint16-descriptor? 2
+            bytevector-u16-native-ref
+            bytevector-u16-native-set!)
+    (int32 :int32-descriptor int32-descriptor int32-descriptor? 4
+           bytevector-s32-native-ref
+           bytevector-s32-native-set!)
+    (uint32 :uint32-descriptor uint32-descriptor uint32-descriptor? 4
+            bytevector-u32-native-ref
+            bytevector-u32-native-set!)
+    (int64 :int64-descriptor int64-descriptor int64-descriptor? 8
+           bytevector-s64-native-ref
+           bytevector-s64-native-set!)
+    (uint64 :uint64-descriptor uint64-descriptor uint64-descriptor? 8
+            bytevector-u64-native-ref
+            bytevector-u64-native-set!)))
