@@ -40,8 +40,7 @@
 ;;; Code:
 
 (define-module (taylan one-to-one-q)
-  #:export
-  (make-q q-empty? q-enq! q-deq! q-list qnull?))
+  #:export (make-q q-empty? q-enq! q-deq! q-list qnull?))
 
 (define (make-qnull)
   (cons #f #f))
