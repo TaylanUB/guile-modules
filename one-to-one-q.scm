@@ -20,11 +20,16 @@
 
 ;;; Commentary:
 
-;; This is a queue that is thread-safe *IF* there is only one enqueuing and one
-;; dequeuing thread, AND if the reading and writing of "locations" (car,
-;; set-car!, variable-ref, variable-set!, etc.) is atomic.  The latter is
-;; platform dependent on Guile, so STRICTLY SPEAKING, THIS MODULE IS BROKEN.
-
+;; This is a queue that would be thread-safe when there is only one enqueuing
+;; and one dequeuing thread, AND if the reading and writing of "locations" (car,
+;; set-car!, variable-ref, variable-set!, etc.) were atomic AND in correct order
+;; during parallelism.  The latter two conditions are platform dependent and
+;; don't tend to hold on modern architectures, so:
+;;
+;; IN PRACTICE, THIS MODULE IS BROKEN
+;;
+;; However the implementation strategy is a nice brain exercise.
+;;
 ;; Basic idea: the queue is essentially a (boxed) linked list, but we have a
 ;; special mutable null object that can be "denulled" into a normal node with a
 ;; fresh null object at its tail, so no matter how many objects the dequeue
