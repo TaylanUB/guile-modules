@@ -1,4 +1,4 @@
-;;; one-to-one-q.scm --- LIMITED lock-free thread-safe queue.
+;;; one-to-one-q.scm --- Lock-free, THEORETICALLY thread-safe queue.
 
 ;; Copyright (C) 2013  Taylan Ulrich B.
 
