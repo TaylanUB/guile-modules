@@ -21,7 +21,9 @@
 ;;; Commentary:
 
 ;; This is a queue that is thread-safe *IF* there is only one enqueuing and one
-;; dequeuing thread.
+;; dequeuing thread, AND if the reading and writing of "locations" (car,
+;; set-car!, variable-ref, variable-set!, etc.) is atomic.  The latter is
+;; platform dependent on Guile, so STRICTLY SPEAKING, THIS MODULE IS BROKEN.
 
 ;; Basic idea: the queue is essentially a (boxed) linked list, but we have a
 ;; special mutable null object that can be "denulled" into a normal node with a
